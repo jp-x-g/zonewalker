@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>1680 Mission — Room Map</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="topbar">
+  <strong>1680 Mission</strong>
+  <span id="floor-checks">
+    Floors:
+    <label><input type="checkbox" data-story="1" checked> 1</label>
+    <label><input type="checkbox" data-story="2" checked> 2</label>
+    <label><input type="checkbox" data-story="3" checked> 3</label>
+    <label><input type="checkbox" data-story="4" checked> 4</label>
+  </span>
+  <label>Color by:
+    <select id="colorby"><option value="none">floor</option><option value="group">group</option></select>
+  </label>
+  <input id="search" type="search" placeholder="search rooms/groups…">
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="maps"></div>
+  <div id="sidebar">
+    <div id="tabs">
+      <button class="tab active" data-tab="rooms">Rooms</button>
+      <button class="tab" data-tab="groups">Groups</button>
+      <button class="tab" data-tab="data">Data</button>
+      <button class="tab" data-tab="manage">Manage</button>
+    </div>
+    <div id="tab-rooms" class="tabpane active">
+      <h3>Selection <span id="selcount"></span></h3>
+      <div id="sel-list"></div>
+    </div>
+    <div id="tab-groups" class="tabpane">
+      <h3>Groups</h3>
+      <div id="group-create">
+        <input id="newgroup-name" placeholder="new group name">
+        <button id="btn-create-group">Create from selection</button>
+      </div>
+      <div id="group-list"></div>
+    </div>
+    <div id="tab-data" class="tabpane">
+      <h3>Overlay data</h3>
+      <div id="schema-checks"></div>
+      <div id="data-mode">
+        <label><input type="radio" name="dmode" value="sel" checked> selection</label>
+        <label><input type="radio" name="dmode" value="all"> all rooms</label>
+        <input id="data-filter" type="search" placeholder="filter rows…">
+      </div>
+      <div id="data-editor"></div>
+    </div>
+    <div id="tab-manage" class="tabpane">
+      <h3>Manage</h3>
+      <h4>Overlay types</h4>
+      <div id="schema-editor"></div>
+      <button id="btn-new-schema">New overlay type</button>
+      <h4>Groups</h4>
+      <div id="group-manage"></div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

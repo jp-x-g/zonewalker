@@ -1,0 +1,14 @@
+[Unit]
+Description=1680 Mission room map GUI
+After=network.target
+
+[Service]
+Type=simple
+User=mapgui
+WorkingDirectory=/opt/room-map-gui
+Environment=MAPGUI_BIND=127.0.0.1
+ExecStart=/usr/bin/python3 /opt/room-map-gui/server.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,48 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+#topbar { padding: 6px 12px; border-bottom: 1px solid #ccc; display: flex; gap: 18px; align-items: center; background: #fafafa; }
+#topbar label { margin-right: 4px; }
+#status { margin-left: auto; color: #2a7; }
+#main { flex: 1; display: flex; min-height: 0; }
+#maps { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 8px; padding: 8px; background: #f4f4f2; }
+.floorbox { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 4px; }
+.floorbox h4 { margin: 2px 6px; font-weight: 600; }
+.floorbox svg { width: 100%; height: auto; display: block; }
+#sidebar { width: 340px; border-left: 1px solid #ccc; display: flex; flex-direction: column; background: #fff; }
+#tabs { display: flex; border-bottom: 1px solid #ccc; }
+.tab { flex: 1; padding: 8px 0; border: none; background: #eee; cursor: pointer; }
+.tab.active { background: #fff; font-weight: 600; border-bottom: 2px solid #36c; }
+.tabpane { display: none; padding: 10px; overflow-y: auto; flex: 1; }
+.tabpane.active { display: block; }
+.room { fill: #cfd8e3; stroke: #45536b; stroke-width: 1; cursor: pointer; }
+.room:hover { fill: #b8c9dd; }
+.room.selected { fill: #ffd479 !important; stroke: #c07800; stroke-width: 2; }
+.room.searchhit { stroke: #d22; stroke-width: 2.5; }
+.nonroom { fill: #999; opacity: 0.55; }
+.roomlabel { font-size: 11px; fill: #223; pointer-events: none; text-anchor: middle; }
+.sel-item { border-bottom: 1px solid #eee; padding: 4px 0; display: flex; gap: 6px; align-items: center; }
+.sel-item input { flex: 1; }
+.sel-item .rid { color: #999; font-size: 11px; width: 70px; }
+.group-row { display: flex; gap: 6px; align-items: center; padding: 3px 0; }
+.group-row .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.group-row button { font-size: 11px; }
+#data-editor table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#data-editor td, #data-editor th { border: 1px solid #ddd; padding: 2px 4px; }
+#data-editor input, #data-editor select { width: 100%; border: none; font-size: 12px; }
+.schema-block { border: 1px solid #ddd; border-radius: 4px; padding: 6px; margin-bottom: 8px; }
+.schema-block .fieldrow { display: flex; gap: 4px; margin: 2px 0; }
+.muted { color: #888; font-size: 12px; }
+button { cursor: pointer; }
+#selrect { fill: rgba(60,120,220,0.15); stroke: #36c; stroke-dasharray: 4 3; }
+
+.roomdata { font-size: 9px; fill: #444; pointer-events: none; text-anchor: middle; }
+#data-mode { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
+#data-mode input[type=search] { flex: 1; }
+#data-editor td.roomcell { cursor: pointer; white-space: nowrap; }
+.mapfield { font-size: 11px; }
+
+.marker { fill: #d94; stroke: #a52; stroke-width: 1.5; cursor: pointer; }
+.marker:hover { fill: #fb6; }
+.marker.selmarker { fill: #f33; stroke: #900; }
+.markertext { font-size: 9px; fill: #833; pointer-events: none; }
+body.placing #maps { cursor: crosshair; }

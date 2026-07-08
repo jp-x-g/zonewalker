@@ -1,0 +1,5 @@
+# Replace map.example.com with your real (sub)domain pointing at the VPS.
+# Caddy obtains and renews the HTTPS certificate automatically.
+map.example.com {
+	reverse_proxy 127.0.0.1:8177
+}

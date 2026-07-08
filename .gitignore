@@ -1,0 +1,6 @@
+# never commit these
+password.txt
+data/
+py/
+__pycache__/
+*.pyc
