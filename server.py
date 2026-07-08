@@ -27,7 +27,9 @@ DATA.mkdir(exist_ok=True)
 
 import os
 
-STORY_SOURCES = {1: "F1", 2: "F3", 3: "F2", 4: "F4"}
+# As of 2026-07-05 partition files are named by PHYSICAL story; the
+# historical F2/F3 drawing swap is resolved at the geometry layer.
+STORY_SOURCES = {1: "F1", 2: "F2", 3: "F3", 4: "F4"}
 PORT = int(os.environ.get("MAPGUI_PORT", "8177"))
 BIND = os.environ.get("MAPGUI_BIND", "0.0.0.0")  # behind a proxy use 127.0.0.1
 MAX_PUT_BYTES = 20_000_000
