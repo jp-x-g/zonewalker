@@ -37,3 +37,5 @@ The console prints whether protection is ON at startup.
 
 Recommended once remote access is on: password ON, and keep periodic
 copies of `data\` somewhere other than the host machine.
+
+Deployed on VPS 2026-07-08.
