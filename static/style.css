@@ -2,7 +2,11 @@
 body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
 #topbar { padding: 6px 12px; border-bottom: 1px solid #ccc; display: flex; gap: 18px; align-items: center; background: #fafafa; }
 #topbar label { margin-right: 4px; }
+#orientation-control { white-space: nowrap; }
+#orientation-toggle { min-width: 76px; padding: 3px 7px; }
 #status { margin-left: auto; color: #2a7; }
+#color-legend { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #555; }
+#color-legend .ramp { width: 90px; height: 10px; border: 1px solid #aaa; border-radius: 2px; }
 #main { flex: 1; display: flex; min-height: 0; }
 #maps { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 8px; padding: 8px; background: #f4f4f2; }
 .floorbox { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 4px; }

@@ -1,12 +1,21 @@
 /* 1680 Mission room map GUI */
 "use strict";
 
+const storedOrientation = localStorage.getItem("mapOrientation");
+const portraitMobile = window.matchMedia("(orientation: portrait)").matches &&
+  (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0 ||
+    Math.min(screen.width, screen.height) <= 700);
+const defaultOrientation = portraitMobile
+  ? "north-up"
+  : "north-right";
+
 const state = {
   floors: {},          // story -> {source, geojson}
   names: {},           // room_id(global) -> display name
   groups: {},          // gid -> {name, color, members: [globalId]}
   schemas: {},         // key -> {name, fields:[{key,label,type,options?}]}
   overlays: {},        // key -> {globalId -> {field: value}}
+  overlayMeta: {},     // key -> generation/source metadata
   activeSchemas: new Set(),
   mapShow: JSON.parse(localStorage.getItem("mapShow") || "{}"), // schemaKey -> fieldKey
   markers: {},          // schemaKey -> {mid: {floor, xy:[x,y], room, fields:{}}}
@@ -14,6 +23,9 @@ const state = {
   selMarker: null,      // {key, mid}
   selection: new Set(),// globalIds like "F1/R010"
   colorby: "none",
+  orientation: ["north-up", "north-right"].includes(storedOrientation)
+    ? storedOrientation
+    : defaultOrientation,
 };
 
 const $ = (s) => document.querySelector(s);
@@ -34,15 +46,23 @@ const saveNames = debounce(() => api.put("data/names", state.names), 600);
 const saveGroups = debounce(() => api.put("data/groups", state.groups), 600);
 const saveSchemas = debounce(() => api.put("data/schemas", state.schemas), 600);
 function packOverlay(key) {
-  return Object.assign({}, state.overlays[key] || {}, { _markers: state.markers[key] || {} });
+  return Object.assign({}, state.overlays[key] || {}, {
+    _meta: state.overlayMeta[key] || {},
+    _markers: state.markers[key] || {},
+  });
 }
 async function loadOverlay(key) {
   const raw = await api.get("data/overlay_" + key);
   state.markers[key] = raw._markers || {};
+  state.overlayMeta[key] = raw._meta || {};
   delete raw._markers;
+  delete raw._meta;
   state.overlays[key] = raw;
 }
-const saveOverlay = debounce((key) => { api.put("data/overlay_" + key, packOverlay(key)); refreshLabels(); renderMarkers(); }, 600);
+const saveOverlay = debounce((key) => {
+  api.put("data/overlay_" + key, packOverlay(key));
+  refreshRoomClasses(); refreshLabels(); renderMarkers();
+}, 600);
 
 function roomLabel(gid) {
   return state.names[gid] || gid.split("/")[1];
@@ -72,6 +92,21 @@ function polyToPath(coords, tf) {
     "M" + ring.map((p) => tf(p)).join("L") + "Z").join(" ");
 }
 
+function projectPoint(frame, [x, y]) {
+  const baseX = x - frame.minx + frame.pad;
+  const baseY = frame.maxy - y + frame.pad;
+  return frame.northUp ? [baseY, frame.width - baseX] : [baseX, baseY];
+}
+
+function unprojectPoint(frame, { x, y }) {
+  const baseX = frame.northUp ? frame.width - y : x;
+  const baseY = frame.northUp ? x : y;
+  return {
+    x: baseX + frame.minx - frame.pad,
+    y: frame.maxy - (baseY - frame.pad),
+  };
+}
+
 function buildFloorSvg(story, fl) {
   const feats = fl.geojson.features;
   let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
@@ -85,17 +120,19 @@ function buildFloorSvg(story, fl) {
     miny = Math.min(miny, y); maxy = Math.max(maxy, y);
   }));
   const pad = 20, W = maxx - minx + 2 * pad, H = maxy - miny + 2 * pad;
-  const tf = ([x, y]) => `${(x - minx + pad).toFixed(1)},${(maxy - y + pad).toFixed(1)}`;
+  const frame = { minx, maxy, pad, width: W, height: H, northUp: state.orientation === "north-up" };
+  const tf = (point) => projectPoint(frame, point).map((n) => n.toFixed(1)).join(",");
+  const viewWidth = frame.northUp ? H : W;
+  const viewHeight = frame.northUp ? W : H;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${W.toFixed(0)} ${H.toFixed(0)}`);
+  svg.setAttribute("viewBox", `0 0 ${viewWidth.toFixed(0)} ${viewHeight.toFixed(0)}`);
   svg.dataset.story = story;
   svg.dataset.source = fl.source;
-  svg.dataset.minx = minx; svg.dataset.maxy = maxy; svg.dataset.pad = pad;
+  svg.mapFrame = frame;
   svg.addEventListener("click", (ev) => {
     if (!state.placing) return;
     ev.stopPropagation(); ev.preventDefault();
-    const p = svgPoint(svg, ev);
-    placeMarker(state.placing, fl, { x: p.x + minx - pad, y: maxy - (p.y - pad) });
+    placeMarker(state.placing, fl, unprojectPoint(frame, svgPoint(svg, ev)));
   }, true);
   for (const f of feats) {
     const pr = f.properties;
@@ -130,14 +167,15 @@ function buildFloorSvg(story, fl) {
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
     t.classList.add("roomlabel");
     t.dataset.gid = gid;
-    t.setAttribute("x", (cx - minx + pad).toFixed(1));
-    t.setAttribute("y", (maxy - cy + pad).toFixed(1));
+    const [tx, ty] = projectPoint(frame, [cx, cy]);
+    t.setAttribute("x", tx.toFixed(1));
+    t.setAttribute("y", ty.toFixed(1));
     svg.appendChild(t);
   }
   const mg = document.createElementNS("http://www.w3.org/2000/svg", "g");
   mg.classList.add("markerlayer");
   svg.appendChild(mg);
-  attachDragSelect(svg, fl, { minx, maxy, pad });
+  attachDragSelect(svg, fl, frame);
   return svg;
 }
 
@@ -170,7 +208,7 @@ function attachDragSelect(svg, fl, frame) {
       for (const f of fl.geojson.features) {
         if (f.properties.type !== "room") continue;
         const [cx, cy] = centroid(f);
-        const sx = cx - frame.minx + frame.pad, sy = frame.maxy - cy + frame.pad;
+        const [sx, sy] = projectPoint(frame, [cx, cy]);
         if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1)
           state.selection.add(fl.source + "/" + f.properties.id);
       }
@@ -199,6 +237,41 @@ function groupColor(gid) {
   return null;
 }
 
+function classificationValue(gid) {
+  if (!state.colorby.startsWith("overlay:")) return null;
+  const [, key, field] = state.colorby.split(":");
+  return ((state.overlays[key] || {})[gid] || {})[field] || null;
+}
+
+function classificationField() {
+  if (!state.colorby.startsWith("overlay:")) return null;
+  const [, key, fieldKey] = state.colorby.split(":");
+  return (state.schemas[key]?.fields || []).find((field) => field.key === fieldKey) || null;
+}
+
+function formatClassificationValue(value) {
+  const field = classificationField();
+  if (value === null || value === undefined || value === "") return "";
+  const rendered = field?.type === "number" && Number.isFinite(Number(value))
+    ? Number(value).toFixed(1)
+    : String(value);
+  return rendered + (field?.unit ? ` ${field.unit}` : "");
+}
+
+function classificationColor(value) {
+  if (!value) return "#e8e8e8";
+  const scale = classificationField()?.color_scale;
+  if (scale && Number.isFinite(Number(value))) {
+    const min = Number(scale.min), max = Number(scale.max);
+    const position = Math.max(0, Math.min(1, (Number(value) - min) / (max - min)));
+    const hue = 220 * (1 - position);
+    return `hsl(${hue.toFixed(0)}, 70%, 74%)`;
+  }
+  let hash = 0;
+  for (const ch of String(value)) hash = ((hash * 31) + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${hash % 360}, 58%, 76%)`;
+}
+
 function refreshRoomClasses() {
   const q = $("#search").value.trim().toLowerCase();
   document.querySelectorAll("path.room").forEach((p) => {
@@ -206,17 +279,56 @@ function refreshRoomClasses() {
     p.classList.toggle("selected", state.selection.has(gid));
     let fill = "";
     if (state.colorby === "group") fill = groupColor(gid) || "#e8e8e8";
+    else if (state.colorby.startsWith("overlay:")) fill = classificationColor(classificationValue(gid));
     p.style.fill = state.selection.has(gid) ? "" : fill;
     let hit = false;
     if (q) {
       const nm = roomLabel(gid).toLowerCase();
       const grp = Object.values(state.groups).some((g) => g.members.includes(gid) && g.name.toLowerCase().includes(q));
-      hit = nm.includes(q) || grp;
+      const overlay = Object.values(state.overlays).some((records) =>
+        Object.values(records[gid] || {}).some((v) => String(v).toLowerCase().includes(q)));
+      hit = nm.includes(q) || grp || overlay;
     }
     p.classList.toggle("searchhit", hit);
     const t = p.querySelector("title");
-    if (t) t.textContent = roomLabel(gid);
+    if (t) {
+      const classification = classificationValue(gid);
+      t.textContent = roomLabel(gid) +
+        (classification ? ` — ${formatClassificationValue(classification)}` : "");
+    }
   });
+}
+
+function renderColorOptions() {
+  const select = $("#colorby");
+  const selected = state.colorby;
+  select.innerHTML = '<option value="none">floor</option><option value="group">group</option>';
+  for (const [key, schema] of Object.entries(state.schemas)) {
+    for (const field of schema.fields || []) {
+      if ((field.type !== "select" && !field.color_scale) || field.colorable === false) continue;
+      const option = document.createElement("option");
+      option.value = `overlay:${key}:${field.key}`;
+      option.textContent = field.color_label ||
+        (schema.name === field.label ? schema.name : `${schema.name}: ${field.label}`);
+      select.appendChild(option);
+    }
+  }
+  select.value = [...select.options].some((o) => o.value === selected) ? selected : "none";
+  state.colorby = select.value;
+  renderColorLegend();
+}
+
+function renderColorLegend() {
+  const legend = $("#color-legend");
+  const field = classificationField();
+  const scale = field?.color_scale;
+  if (!scale) {
+    legend.innerHTML = "";
+    return;
+  }
+  legend.innerHTML = `<span>${scale.min}${field.unit || ""}</span>` +
+    '<span class="ramp" style="background:linear-gradient(90deg,hsl(220,70%,74%),hsl(110,70%,74%),hsl(0,70%,74%))"></span>' +
+    `<span>${scale.max}${field.unit || ""}</span>`;
 }
 
 function refreshLabels() {
@@ -235,6 +347,13 @@ function refreshLabels() {
       v = String(v);
       if (v.length > 22) v = v.slice(0, 21) + "\u2026";
       lines.push({ txt: v, cls: "roomdata" });
+    }
+    if (state.colorby.startsWith("overlay:")) {
+      const [, colorKey, colorField] = state.colorby.split(":");
+      const alreadyShown = shows.some(([key, field]) => key === colorKey && field === colorField);
+      const value = classificationValue(gid);
+      if (!alreadyShown && value !== null && value !== undefined && value !== "")
+        lines.push({ txt: formatClassificationValue(value), cls: "roomdata" });
     }
     lines.forEach(({ txt, cls }, i) => {
       const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -283,12 +402,12 @@ function renderMarkers() {
     if (!mg) return;
     mg.innerHTML = "";
     const src = svg.dataset.source;
-    const minx = +svg.dataset.minx, maxy = +svg.dataset.maxy, pad = +svg.dataset.pad;
+    const frame = svg.mapFrame;
     for (const [key, ms] of Object.entries(state.markers)) {
       if (!state.activeSchemas.has(key) && !state.mapShow[key]) continue;
       for (const [mid, m] of Object.entries(ms)) {
         if (m.floor !== src) continue;
-        const cx = m.xy[0] - minx + pad, cy = maxy - m.xy[1] + pad;
+        const [cx, cy] = projectPoint(frame, m.xy);
         const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", 5);
         c.classList.add("marker");
@@ -298,7 +417,7 @@ function renderMarkers() {
           state.selMarker = { key, mid };
           renderMarkers(); renderDataEditor();
         });
-        attachMarkerDrag(c, svg, key, mid, { minx, maxy, pad });
+        attachMarkerDrag(c, svg, key, mid, frame);
         mg.appendChild(c);
         const fieldKey = state.mapShow[key];
         if (fieldKey) {
@@ -330,8 +449,8 @@ function attachMarkerDrag(c, svg, key, mid, frame) {
       window.removeEventListener("mouseup", up);
       const p = svgPoint(svg, e);
       const m = state.markers[key][mid];
-      m.xy = [Math.round((p.x + frame.minx - frame.pad) * 10) / 10,
-              Math.round((frame.maxy - (p.y - frame.pad)) * 10) / 10];
+      const mapPoint = unprojectPoint(frame, p);
+      m.xy = [Math.round(mapPoint.x * 10) / 10, Math.round(mapPoint.y * 10) / 10];
       const fl = Object.values(state.floors).find((f) => f.source === m.floor);
       m.room = roomAt(fl, m.xy[0], m.xy[1]);
       saveOverlay(key); renderMarkers(); renderDataEditor();
@@ -442,6 +561,7 @@ function renderSchemaChecks() {
         if (!state.overlays[key]) await loadOverlay(key);
       } else state.activeSchemas.delete(key);
       renderDataEditor();
+      renderMarkers();
     };
     lab.append(cb, " " + sc.name + " ");
     const exp = document.createElement("a");
@@ -468,6 +588,7 @@ function renderSchemaChecks() {
       }
       localStorage.setItem("mapShow", JSON.stringify(state.mapShow));
       refreshLabels();
+      renderMarkers();
     };
     mapCb.onchange = applyMapShow;
     fieldSel.onchange = applyMapShow;
@@ -656,8 +777,26 @@ function renderSchemaEditor() {
     del.textContent = "delete type";
     del.onclick = () => {
       if (confirm(`Delete overlay type "${sc.name}"? (data file kept on disk)`)) {
-        delete state.schemas[key]; state.activeSchemas.delete(key);
-        saveSchemas(); renderSchemaEditor(); renderSchemaChecks(); renderDataEditor();
+        delete state.schemas[key];
+        state.activeSchemas.delete(key);
+        delete state.mapShow[key];
+        delete state.overlays[key];
+        delete state.overlayMeta[key];
+        delete state.markers[key];
+        localStorage.setItem("mapShow", JSON.stringify(state.mapShow));
+        if (state.placing === key) {
+          state.placing = null;
+          document.body.classList.remove("placing");
+        }
+        if (state.selMarker?.key === key) state.selMarker = null;
+        saveSchemas();
+        renderColorOptions();
+        renderSchemaEditor();
+        renderSchemaChecks();
+        renderDataEditor();
+        refreshRoomClasses();
+        refreshLabels();
+        renderMarkers();
       }
     };
     block.append(name, del);
@@ -705,7 +844,29 @@ document.querySelectorAll(".tab").forEach((b) =>
     $("#tab-" + b.dataset.tab).classList.add("active");
   }));
 document.querySelectorAll("#floor-checks input").forEach((c) => c.addEventListener("change", renderMaps));
-$("#colorby").addEventListener("change", (e) => { state.colorby = e.target.value; refreshRoomClasses(); });
+function renderOrientationToggle() {
+  const btn = $("#orientation-toggle");
+  const northUp = state.orientation === "north-up";
+  btn.textContent = northUp ? "North \u2191" : "North \u2192";
+  btn.title = northUp
+    ? "North is at the top; click for the original view"
+    : "North is at the right; click for north at the top";
+  btn.setAttribute("aria-pressed", String(northUp));
+}
+$("#orientation-toggle").addEventListener("click", () => {
+  state.orientation = state.orientation === "north-up" ? "north-right" : "north-up";
+  localStorage.setItem("mapOrientation", state.orientation);
+  renderOrientationToggle();
+  renderMaps();
+});
+$("#colorby").addEventListener("change", async (e) => {
+  state.colorby = e.target.value;
+  if (state.colorby.startsWith("overlay:")) {
+    const [, key] = state.colorby.split(":");
+    if (!state.overlays[key]) await loadOverlay(key);
+  }
+  refreshRoomClasses(); refreshLabels(); renderColorLegend();
+});
 $("#search").addEventListener("input", refreshRoomClasses);
 
 document.querySelectorAll('#data-mode input[name=dmode]').forEach((r) =>
@@ -714,10 +875,12 @@ $("#data-filter").addEventListener("input", debounce(renderDataEditor, 250));
 
 /* ---------- init ---------- */
 (async function init() {
+  renderOrientationToggle();
   state.floors = await api.get("floors");
   state.names = await api.get("data/names");
   state.groups = await api.get("data/groups");
   state.schemas = await api.get("data/schemas");
+  renderColorOptions();
   for (const key of Object.keys(state.mapShow)) {
     if (!state.schemas[key]) { delete state.mapShow[key]; continue; }
     await loadOverlay(key);
