@@ -60,6 +60,33 @@ async function loadOverlay(key) {
   delete raw._meta;
   state.overlays[key] = raw;
 }
+function overlayFreshness(key) {
+  const meta = state.overlayMeta[key] || {};
+  const timestamp = Date.parse(
+    meta.latest_observed_at || meta.received_at || meta.snapshot_finished_at || ""
+  );
+  if (!Number.isFinite(timestamp)) return { stale: true, ageSeconds: null };
+  const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
+  return {
+    stale: ageSeconds > Number(meta.stale_after_seconds || 900),
+    ageSeconds,
+  };
+}
+function temperatureRecordFreshness(gid) {
+  const record = (state.overlays.temperature || {})[gid] || {};
+  const timestamp = Date.parse(record.read_at || "");
+  const staleAfter = Number(state.overlayMeta.temperature?.stale_after_seconds || 900);
+  if (!Number.isFinite(timestamp)) return { stale: true, ageSeconds: null };
+  const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
+  return { stale: ageSeconds > staleAfter, ageSeconds };
+}
+function ageText(seconds) {
+  if (!Number.isFinite(seconds)) return "no live data";
+  if (seconds < 90) return "updated just now";
+  if (seconds < 5400) return `updated ${Math.round(seconds / 60)} min ago`;
+  if (seconds < 129600) return `updated ${Math.round(seconds / 3600)} hr ago`;
+  return `updated ${Math.round(seconds / 86400)} days ago`;
+}
 const saveOverlay = debounce((key) => {
   api.put("data/overlay_" + key, packOverlay(key));
   refreshRoomClasses(); refreshLabels(); renderMarkers();
@@ -259,12 +286,20 @@ function formatClassificationValue(value) {
   return rendered + (field?.unit ? ` ${field.unit}` : "");
 }
 
-function classificationColor(value) {
+function classificationColor(value, gid = null) {
   if (!value) return "#e8e8e8";
   const scale = classificationField()?.color_scale;
   if (scale && Number.isFinite(Number(value))) {
     const min = Number(scale.min), max = Number(scale.max);
     const position = Math.max(0, Math.min(1, (Number(value) - min) / (max - min)));
+    const stale = state.colorby.startsWith("overlay:temperature:") &&
+      (gid ? temperatureRecordFreshness(gid).stale : overlayFreshness("temperature").stale);
+    if (stale) {
+      // A separate amber lightness ramp keeps stale values useful while making
+      // them visibly different from both unclassified gray and the live ramp.
+      const lightness = 88 - (position * 34);
+      return `hsl(34, 84%, ${lightness.toFixed(0)}%)`;
+    }
     const hue = 220 * (1 - position);
     return `hsl(${hue.toFixed(0)}, 70%, 74%)`;
   }
@@ -280,7 +315,7 @@ function refreshRoomClasses() {
     p.classList.toggle("selected", state.selection.has(gid));
     let fill = "";
     if (state.colorby === "group") fill = groupColor(gid) || "#e8e8e8";
-    else if (state.colorby.startsWith("overlay:")) fill = classificationColor(classificationValue(gid));
+    else if (state.colorby.startsWith("overlay:")) fill = classificationColor(classificationValue(gid), gid);
     p.style.fill = state.selection.has(gid) ? "" : fill;
     let hit = false;
     if (q) {
@@ -294,8 +329,10 @@ function refreshRoomClasses() {
     const t = p.querySelector("title");
     if (t) {
       const classification = classificationValue(gid);
+      const stale = state.colorby.startsWith("overlay:temperature:") &&
+        temperatureRecordFreshness(gid).stale;
       t.textContent = roomLabel(gid) +
-        (classification ? ` — ${formatClassificationValue(classification)}` : "");
+        (classification ? ` — ${formatClassificationValue(classification)}${stale ? " (stale)" : ""}` : "");
     }
   });
 }
@@ -319,6 +356,16 @@ function renderColorOptions() {
   renderColorLegend();
 }
 
+function selectTemperatureColoring() {
+  const field = (state.schemas.temperature?.fields || []).find((candidate) =>
+    candidate.key === "temperature_f" && candidate.color_scale);
+  if (!field) return false;
+  state.colorby = `overlay:temperature:${field.key}`;
+  $("#colorby").value = state.colorby;
+  renderColorLegend();
+  return true;
+}
+
 function renderColorLegend() {
   const legend = $("#color-legend");
   const field = classificationField();
@@ -330,6 +377,17 @@ function renderColorLegend() {
   legend.innerHTML = `<span>${scale.min}${field.unit || ""}</span>` +
     '<span class="ramp" style="background:linear-gradient(90deg,hsl(220,70%,74%),hsl(110,70%,74%),hsl(0,70%,74%))"></span>' +
     `<span>${scale.max}${field.unit || ""}</span>`;
+  if (state.colorby.startsWith("overlay:temperature:")) {
+    const freshness = overlayFreshness("temperature");
+    if (freshness.stale) {
+      legend.querySelector(".ramp").style.background =
+        "linear-gradient(90deg,hsl(34,84%,88%),hsl(34,84%,71%),hsl(34,84%,54%))";
+    }
+    const status = document.createElement("span");
+    status.className = freshness.stale ? "freshness stale" : "freshness";
+    status.textContent = ageText(freshness.ageSeconds) + (freshness.stale ? " — stale" : "");
+    legend.appendChild(status);
+  }
 }
 
 function refreshLabels() {
@@ -634,6 +692,7 @@ function renderSchemaChecks() {
         state.mapShow[key] = fieldSel.value || (sc.fields[0] && sc.fields[0].key);
         fieldSel.style.display = "";
         if (!state.overlays[key]) await loadOverlay(key);
+        if (key === "temperature" && selectTemperatureColoring()) refreshRoomClasses();
       } else {
         delete state.mapShow[key];
         fieldSel.style.display = "none";
@@ -922,6 +981,18 @@ $("#colorby").addEventListener("change", async (e) => {
 });
 $("#search").addEventListener("input", refreshRoomClasses);
 
+async function refreshLiveTemperature() {
+  if (!state.schemas.temperature) return;
+  try {
+    await loadOverlay("temperature");
+    refreshRoomClasses();
+    refreshLabels();
+    renderColorLegend();
+  } catch (error) {
+    console.warn("temperature refresh failed", error);
+  }
+}
+
 document.querySelectorAll('#data-mode input[name=dmode]').forEach((r) =>
   r.addEventListener("change", renderDataEditor));
 $("#data-filter").addEventListener("input", debounce(renderDataEditor, 250));
@@ -937,11 +1008,14 @@ $("#move-points").addEventListener("change", (ev) => {
   state.names = await api.get("data/names");
   state.groups = await api.get("data/groups");
   state.schemas = await api.get("data/schemas");
+  if (state.schemas.temperature) await loadOverlay("temperature");
   renderColorOptions();
+  if (state.mapShow.temperature) selectTemperatureColoring();
   for (const key of Object.keys(state.mapShow)) {
     if (!state.schemas[key]) { delete state.mapShow[key]; continue; }
     await loadOverlay(key);
   }
   renderMaps(); renderSelection(); renderGroups(); renderGroupManage();
   renderSchemaChecks(); renderSchemaEditor(); renderDataEditor(); refreshLabels(); renderMarkers();
+  window.setInterval(refreshLiveTemperature, 30000);
 })();
