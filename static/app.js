@@ -21,6 +21,7 @@ const state = {
   markers: {},          // schemaKey -> {mid: {floor, xy:[x,y], room, fields:{}}}
   placing: null,        // schemaKey while armed to drop a point
   selMarker: null,      // {key, mid}
+  movePoints: false,    // deliberately resets off on every page load
   selection: new Set(),// globalIds like "F1/R010"
   colorby: "none",
   orientation: ["north-up", "north-right"].includes(storedOrientation)
@@ -411,13 +412,19 @@ function renderMarkers() {
         const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", 5);
         c.classList.add("marker");
+        c.dataset.schema = key;
+        c.dataset.marker = mid;
         if (state.selMarker && state.selMarker.mid === mid) c.classList.add("selmarker");
         c.addEventListener("click", (ev) => {
           ev.stopPropagation();
+          if (c.wasDragged) { c.wasDragged = false; return; }
           state.selMarker = { key, mid };
           renderMarkers(); renderDataEditor();
         });
-        attachMarkerDrag(c, svg, key, mid, frame);
+        if (state.movePoints) {
+          c.classList.add("movable");
+          attachMarkerDrag(c, svg, key, mid, frame);
+        }
         mg.appendChild(c);
         const fieldKey = state.mapShow[key];
         if (fieldKey) {
@@ -436,27 +443,57 @@ function renderMarkers() {
       }
     }
   });
+  updateMovePointsControl();
 }
 function attachMarkerDrag(c, svg, key, mid, frame) {
-  c.addEventListener("mousedown", (ev) => {
+  c.addEventListener("pointerdown", (ev) => {
+    if (!state.movePoints || !ev.isPrimary || ev.button !== 0) return;
     ev.stopPropagation(); ev.preventDefault();
+    const pointerId = ev.pointerId;
+    const start = { x: ev.clientX, y: ev.clientY };
+    let moved = false;
+    c.setPointerCapture(pointerId);
+    document.body.classList.add("moving-point");
     const move = (e) => {
+      if (e.pointerId !== pointerId) return;
+      if (!moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 3) return;
+      moved = true;
       const p = svgPoint(svg, e);
       c.setAttribute("cx", p.x); c.setAttribute("cy", p.y);
     };
+    const cleanup = () => {
+      c.removeEventListener("pointermove", move);
+      c.removeEventListener("pointerup", up);
+      c.removeEventListener("pointercancel", cancel);
+      if (c.hasPointerCapture(pointerId)) c.releasePointerCapture(pointerId);
+      document.body.classList.remove("moving-point");
+    };
     const up = (e) => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      if (e.pointerId !== pointerId) return;
+      cleanup();
+      if (!moved) {
+        state.selMarker = { key, mid };
+        renderMarkers(); renderDataEditor();
+        return;
+      }
+      c.wasDragged = true;
       const p = svgPoint(svg, e);
       const m = state.markers[key][mid];
+      if (!m) return;
       const mapPoint = unprojectPoint(frame, p);
       m.xy = [Math.round(mapPoint.x * 10) / 10, Math.round(mapPoint.y * 10) / 10];
       const fl = Object.values(state.floors).find((f) => f.source === m.floor);
       m.room = roomAt(fl, m.xy[0], m.xy[1]);
       saveOverlay(key); renderMarkers(); renderDataEditor();
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    const cancel = (e) => {
+      if (e.pointerId !== pointerId) return;
+      cleanup();
+      if (moved) renderMarkers();
+    };
+    c.addEventListener("pointermove", move);
+    c.addEventListener("pointerup", up);
+    c.addEventListener("pointercancel", cancel);
   });
 }
 
@@ -546,6 +583,21 @@ $("#btn-create-group").onclick = () => {
 };
 
 /* ---------- sidebar: overlay data ---------- */
+function updateMovePointsControl() {
+  const displayedKeys = new Set([
+    ...state.activeSchemas,
+    ...Object.keys(state.mapShow).filter((key) => state.mapShow[key]),
+  ]);
+  const hasDisplayedPoints = [...displayedKeys]
+    .some((key) => Object.keys(state.markers[key] || {}).length > 0);
+  const control = $("#move-points-control");
+  const checkbox = $("#move-points");
+  control.hidden = !hasDisplayedPoints;
+  if (!hasDisplayedPoints) state.movePoints = false;
+  checkbox.checked = state.movePoints;
+  document.body.classList.toggle("move-points-enabled", state.movePoints);
+}
+
 function renderSchemaChecks() {
   const div = $("#schema-checks");
   div.innerHTML = Object.keys(state.schemas).length ? "" : "<p class='muted'>No overlay types yet — create one in Manage.</p>";
@@ -609,6 +661,7 @@ function renderSchemaChecks() {
     lab.append(" ", ptBtn);
     div.appendChild(lab);
   }
+  updateMovePointsControl();
 }
 function dataMode() {
   return document.querySelector('#data-mode input[name=dmode]:checked').value;
@@ -872,6 +925,10 @@ $("#search").addEventListener("input", refreshRoomClasses);
 document.querySelectorAll('#data-mode input[name=dmode]').forEach((r) =>
   r.addEventListener("change", renderDataEditor));
 $("#data-filter").addEventListener("input", debounce(renderDataEditor, 250));
+$("#move-points").addEventListener("change", (ev) => {
+  state.movePoints = ev.target.checked;
+  renderMarkers();
+});
 
 /* ---------- init ---------- */
 (async function init() {

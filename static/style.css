@@ -44,9 +44,14 @@ button { cursor: pointer; }
 #data-mode input[type=search] { flex: 1; }
 #data-editor td.roomcell { cursor: pointer; white-space: nowrap; }
 .mapfield { font-size: 11px; }
+#move-points-control { display: block; margin: 6px 0; }
+#move-points-control[hidden] { display: none; }
 
 .marker { fill: #d94; stroke: #a52; stroke-width: 1.5; cursor: pointer; }
 .marker:hover { fill: #fb6; }
 .marker.selmarker { fill: #f33; stroke: #900; }
+.marker.movable { cursor: grab; stroke-width: 2; touch-action: none; }
+body.moving-point .marker.movable { cursor: grabbing; }
+body.move-points-enabled #maps { touch-action: none; }
 .markertext { font-size: 9px; fill: #833; pointer-events: none; }
 body.placing #maps { cursor: crosshair; }
