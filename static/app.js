@@ -1,19 +1,32 @@
 /* 1680 Mission room map GUI */
 "use strict";
 
+const storedOrientation = localStorage.getItem("mapOrientation");
+const portraitMobile = window.matchMedia("(orientation: portrait)").matches &&
+  (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0 ||
+    Math.min(screen.width, screen.height) <= 700);
+const defaultOrientation = portraitMobile
+  ? "north-up"
+  : "north-right";
+
 const state = {
   floors: {},          // story -> {source, geojson}
   names: {},           // room_id(global) -> display name
   groups: {},          // gid -> {name, color, members: [globalId]}
   schemas: {},         // key -> {name, fields:[{key,label,type,options?}]}
   overlays: {},        // key -> {globalId -> {field: value}}
+  overlayMeta: {},     // key -> generation/source metadata
   activeSchemas: new Set(),
   mapShow: JSON.parse(localStorage.getItem("mapShow") || "{}"), // schemaKey -> fieldKey
   markers: {},          // schemaKey -> {mid: {floor, xy:[x,y], room, fields:{}}}
   placing: null,        // schemaKey while armed to drop a point
   selMarker: null,      // {key, mid}
+  movePoints: false,    // deliberately resets off on every page load
   selection: new Set(),// globalIds like "F1/R010"
   colorby: "none",
+  orientation: ["north-up", "north-right"].includes(storedOrientation)
+    ? storedOrientation
+    : defaultOrientation,
 };
 
 const $ = (s) => document.querySelector(s);
@@ -34,15 +47,50 @@ const saveNames = debounce(() => api.put("data/names", state.names), 600);
 const saveGroups = debounce(() => api.put("data/groups", state.groups), 600);
 const saveSchemas = debounce(() => api.put("data/schemas", state.schemas), 600);
 function packOverlay(key) {
-  return Object.assign({}, state.overlays[key] || {}, { _markers: state.markers[key] || {} });
+  return Object.assign({}, state.overlays[key] || {}, {
+    _meta: state.overlayMeta[key] || {},
+    _markers: state.markers[key] || {},
+  });
 }
 async function loadOverlay(key) {
   const raw = await api.get("data/overlay_" + key);
   state.markers[key] = raw._markers || {};
+  state.overlayMeta[key] = raw._meta || {};
   delete raw._markers;
+  delete raw._meta;
   state.overlays[key] = raw;
 }
-const saveOverlay = debounce((key) => { api.put("data/overlay_" + key, packOverlay(key)); refreshLabels(); renderMarkers(); }, 600);
+function overlayFreshness(key) {
+  const meta = state.overlayMeta[key] || {};
+  const timestamp = Date.parse(
+    meta.latest_observed_at || meta.received_at || meta.snapshot_finished_at || ""
+  );
+  if (!Number.isFinite(timestamp)) return { stale: true, ageSeconds: null };
+  const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
+  return {
+    stale: ageSeconds > Number(meta.stale_after_seconds || 900),
+    ageSeconds,
+  };
+}
+function temperatureRecordFreshness(gid) {
+  const record = (state.overlays.temperature || {})[gid] || {};
+  const timestamp = Date.parse(record.read_at || "");
+  const staleAfter = Number(state.overlayMeta.temperature?.stale_after_seconds || 900);
+  if (!Number.isFinite(timestamp)) return { stale: true, ageSeconds: null };
+  const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
+  return { stale: ageSeconds > staleAfter, ageSeconds };
+}
+function ageText(seconds) {
+  if (!Number.isFinite(seconds)) return "no live data";
+  if (seconds < 90) return "updated just now";
+  if (seconds < 5400) return `updated ${Math.round(seconds / 60)} min ago`;
+  if (seconds < 129600) return `updated ${Math.round(seconds / 3600)} hr ago`;
+  return `updated ${Math.round(seconds / 86400)} days ago`;
+}
+const saveOverlay = debounce((key) => {
+  api.put("data/overlay_" + key, packOverlay(key));
+  refreshRoomClasses(); refreshLabels(); renderMarkers();
+}, 600);
 
 function roomLabel(gid) {
   return state.names[gid] || gid.split("/")[1];
@@ -72,6 +120,21 @@ function polyToPath(coords, tf) {
     "M" + ring.map((p) => tf(p)).join("L") + "Z").join(" ");
 }
 
+function projectPoint(frame, [x, y]) {
+  const baseX = x - frame.minx + frame.pad;
+  const baseY = frame.maxy - y + frame.pad;
+  return frame.northUp ? [baseY, frame.width - baseX] : [baseX, baseY];
+}
+
+function unprojectPoint(frame, { x, y }) {
+  const baseX = frame.northUp ? frame.width - y : x;
+  const baseY = frame.northUp ? x : y;
+  return {
+    x: baseX + frame.minx - frame.pad,
+    y: frame.maxy - (baseY - frame.pad),
+  };
+}
+
 function buildFloorSvg(story, fl) {
   const feats = fl.geojson.features;
   let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
@@ -85,17 +148,19 @@ function buildFloorSvg(story, fl) {
     miny = Math.min(miny, y); maxy = Math.max(maxy, y);
   }));
   const pad = 20, W = maxx - minx + 2 * pad, H = maxy - miny + 2 * pad;
-  const tf = ([x, y]) => `${(x - minx + pad).toFixed(1)},${(maxy - y + pad).toFixed(1)}`;
+  const frame = { minx, maxy, pad, width: W, height: H, northUp: state.orientation === "north-up" };
+  const tf = (point) => projectPoint(frame, point).map((n) => n.toFixed(1)).join(",");
+  const viewWidth = frame.northUp ? H : W;
+  const viewHeight = frame.northUp ? W : H;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${W.toFixed(0)} ${H.toFixed(0)}`);
+  svg.setAttribute("viewBox", `0 0 ${viewWidth.toFixed(0)} ${viewHeight.toFixed(0)}`);
   svg.dataset.story = story;
   svg.dataset.source = fl.source;
-  svg.dataset.minx = minx; svg.dataset.maxy = maxy; svg.dataset.pad = pad;
+  svg.mapFrame = frame;
   svg.addEventListener("click", (ev) => {
     if (!state.placing) return;
     ev.stopPropagation(); ev.preventDefault();
-    const p = svgPoint(svg, ev);
-    placeMarker(state.placing, fl, { x: p.x + minx - pad, y: maxy - (p.y - pad) });
+    placeMarker(state.placing, fl, unprojectPoint(frame, svgPoint(svg, ev)));
   }, true);
   for (const f of feats) {
     const pr = f.properties;
@@ -130,14 +195,15 @@ function buildFloorSvg(story, fl) {
     const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
     t.classList.add("roomlabel");
     t.dataset.gid = gid;
-    t.setAttribute("x", (cx - minx + pad).toFixed(1));
-    t.setAttribute("y", (maxy - cy + pad).toFixed(1));
+    const [tx, ty] = projectPoint(frame, [cx, cy]);
+    t.setAttribute("x", tx.toFixed(1));
+    t.setAttribute("y", ty.toFixed(1));
     svg.appendChild(t);
   }
   const mg = document.createElementNS("http://www.w3.org/2000/svg", "g");
   mg.classList.add("markerlayer");
   svg.appendChild(mg);
-  attachDragSelect(svg, fl, { minx, maxy, pad });
+  attachDragSelect(svg, fl, frame);
   return svg;
 }
 
@@ -170,7 +236,7 @@ function attachDragSelect(svg, fl, frame) {
       for (const f of fl.geojson.features) {
         if (f.properties.type !== "room") continue;
         const [cx, cy] = centroid(f);
-        const sx = cx - frame.minx + frame.pad, sy = frame.maxy - cy + frame.pad;
+        const [sx, sy] = projectPoint(frame, [cx, cy]);
         if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1)
           state.selection.add(fl.source + "/" + f.properties.id);
       }
@@ -199,6 +265,49 @@ function groupColor(gid) {
   return null;
 }
 
+function classificationValue(gid) {
+  if (!state.colorby.startsWith("overlay:")) return null;
+  const [, key, field] = state.colorby.split(":");
+  return ((state.overlays[key] || {})[gid] || {})[field] || null;
+}
+
+function classificationField() {
+  if (!state.colorby.startsWith("overlay:")) return null;
+  const [, key, fieldKey] = state.colorby.split(":");
+  return (state.schemas[key]?.fields || []).find((field) => field.key === fieldKey) || null;
+}
+
+function formatClassificationValue(value) {
+  const field = classificationField();
+  if (value === null || value === undefined || value === "") return "";
+  const rendered = field?.type === "number" && Number.isFinite(Number(value))
+    ? Number(value).toFixed(1)
+    : String(value);
+  return rendered + (field?.unit ? ` ${field.unit}` : "");
+}
+
+function classificationColor(value, gid = null) {
+  if (!value) return "#e8e8e8";
+  const scale = classificationField()?.color_scale;
+  if (scale && Number.isFinite(Number(value))) {
+    const min = Number(scale.min), max = Number(scale.max);
+    const position = Math.max(0, Math.min(1, (Number(value) - min) / (max - min)));
+    const stale = state.colorby.startsWith("overlay:temperature:") &&
+      (gid ? temperatureRecordFreshness(gid).stale : overlayFreshness("temperature").stale);
+    if (stale) {
+      // A separate amber lightness ramp keeps stale values useful while making
+      // them visibly different from both unclassified gray and the live ramp.
+      const lightness = 88 - (position * 34);
+      return `hsl(34, 84%, ${lightness.toFixed(0)}%)`;
+    }
+    const hue = 220 * (1 - position);
+    return `hsl(${hue.toFixed(0)}, 70%, 74%)`;
+  }
+  let hash = 0;
+  for (const ch of String(value)) hash = ((hash * 31) + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${hash % 360}, 58%, 76%)`;
+}
+
 function refreshRoomClasses() {
   const q = $("#search").value.trim().toLowerCase();
   document.querySelectorAll("path.room").forEach((p) => {
@@ -206,17 +315,79 @@ function refreshRoomClasses() {
     p.classList.toggle("selected", state.selection.has(gid));
     let fill = "";
     if (state.colorby === "group") fill = groupColor(gid) || "#e8e8e8";
+    else if (state.colorby.startsWith("overlay:")) fill = classificationColor(classificationValue(gid), gid);
     p.style.fill = state.selection.has(gid) ? "" : fill;
     let hit = false;
     if (q) {
       const nm = roomLabel(gid).toLowerCase();
       const grp = Object.values(state.groups).some((g) => g.members.includes(gid) && g.name.toLowerCase().includes(q));
-      hit = nm.includes(q) || grp;
+      const overlay = Object.values(state.overlays).some((records) =>
+        Object.values(records[gid] || {}).some((v) => String(v).toLowerCase().includes(q)));
+      hit = nm.includes(q) || grp || overlay;
     }
     p.classList.toggle("searchhit", hit);
     const t = p.querySelector("title");
-    if (t) t.textContent = roomLabel(gid);
+    if (t) {
+      const classification = classificationValue(gid);
+      const stale = state.colorby.startsWith("overlay:temperature:") &&
+        temperatureRecordFreshness(gid).stale;
+      t.textContent = roomLabel(gid) +
+        (classification ? ` — ${formatClassificationValue(classification)}${stale ? " (stale)" : ""}` : "");
+    }
   });
+}
+
+function renderColorOptions() {
+  const select = $("#colorby");
+  const selected = state.colorby;
+  select.innerHTML = '<option value="none">floor</option><option value="group">group</option>';
+  for (const [key, schema] of Object.entries(state.schemas)) {
+    for (const field of schema.fields || []) {
+      if ((field.type !== "select" && !field.color_scale) || field.colorable === false) continue;
+      const option = document.createElement("option");
+      option.value = `overlay:${key}:${field.key}`;
+      option.textContent = field.color_label ||
+        (schema.name === field.label ? schema.name : `${schema.name}: ${field.label}`);
+      select.appendChild(option);
+    }
+  }
+  select.value = [...select.options].some((o) => o.value === selected) ? selected : "none";
+  state.colorby = select.value;
+  renderColorLegend();
+}
+
+function selectTemperatureColoring() {
+  const field = (state.schemas.temperature?.fields || []).find((candidate) =>
+    candidate.key === "temperature_f" && candidate.color_scale);
+  if (!field) return false;
+  state.colorby = `overlay:temperature:${field.key}`;
+  $("#colorby").value = state.colorby;
+  renderColorLegend();
+  return true;
+}
+
+function renderColorLegend() {
+  const legend = $("#color-legend");
+  const field = classificationField();
+  const scale = field?.color_scale;
+  if (!scale) {
+    legend.innerHTML = "";
+    return;
+  }
+  legend.innerHTML = `<span>${scale.min}${field.unit || ""}</span>` +
+    '<span class="ramp" style="background:linear-gradient(90deg,hsl(220,70%,74%),hsl(110,70%,74%),hsl(0,70%,74%))"></span>' +
+    `<span>${scale.max}${field.unit || ""}</span>`;
+  if (state.colorby.startsWith("overlay:temperature:")) {
+    const freshness = overlayFreshness("temperature");
+    if (freshness.stale) {
+      legend.querySelector(".ramp").style.background =
+        "linear-gradient(90deg,hsl(34,84%,88%),hsl(34,84%,71%),hsl(34,84%,54%))";
+    }
+    const status = document.createElement("span");
+    status.className = freshness.stale ? "freshness stale" : "freshness";
+    status.textContent = ageText(freshness.ageSeconds) + (freshness.stale ? " — stale" : "");
+    legend.appendChild(status);
+  }
 }
 
 function refreshLabels() {
@@ -235,6 +406,13 @@ function refreshLabels() {
       v = String(v);
       if (v.length > 22) v = v.slice(0, 21) + "\u2026";
       lines.push({ txt: v, cls: "roomdata" });
+    }
+    if (state.colorby.startsWith("overlay:")) {
+      const [, colorKey, colorField] = state.colorby.split(":");
+      const alreadyShown = shows.some(([key, field]) => key === colorKey && field === colorField);
+      const value = classificationValue(gid);
+      if (!alreadyShown && value !== null && value !== undefined && value !== "")
+        lines.push({ txt: formatClassificationValue(value), cls: "roomdata" });
     }
     lines.forEach(({ txt, cls }, i) => {
       const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -283,22 +461,28 @@ function renderMarkers() {
     if (!mg) return;
     mg.innerHTML = "";
     const src = svg.dataset.source;
-    const minx = +svg.dataset.minx, maxy = +svg.dataset.maxy, pad = +svg.dataset.pad;
+    const frame = svg.mapFrame;
     for (const [key, ms] of Object.entries(state.markers)) {
       if (!state.activeSchemas.has(key) && !state.mapShow[key]) continue;
       for (const [mid, m] of Object.entries(ms)) {
         if (m.floor !== src) continue;
-        const cx = m.xy[0] - minx + pad, cy = maxy - m.xy[1] + pad;
+        const [cx, cy] = projectPoint(frame, m.xy);
         const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", 5);
         c.classList.add("marker");
+        c.dataset.schema = key;
+        c.dataset.marker = mid;
         if (state.selMarker && state.selMarker.mid === mid) c.classList.add("selmarker");
         c.addEventListener("click", (ev) => {
           ev.stopPropagation();
+          if (c.wasDragged) { c.wasDragged = false; return; }
           state.selMarker = { key, mid };
           renderMarkers(); renderDataEditor();
         });
-        attachMarkerDrag(c, svg, key, mid, { minx, maxy, pad });
+        if (state.movePoints) {
+          c.classList.add("movable");
+          attachMarkerDrag(c, svg, key, mid, frame);
+        }
         mg.appendChild(c);
         const fieldKey = state.mapShow[key];
         if (fieldKey) {
@@ -317,27 +501,57 @@ function renderMarkers() {
       }
     }
   });
+  updateMovePointsControl();
 }
 function attachMarkerDrag(c, svg, key, mid, frame) {
-  c.addEventListener("mousedown", (ev) => {
+  c.addEventListener("pointerdown", (ev) => {
+    if (!state.movePoints || !ev.isPrimary || ev.button !== 0) return;
     ev.stopPropagation(); ev.preventDefault();
+    const pointerId = ev.pointerId;
+    const start = { x: ev.clientX, y: ev.clientY };
+    let moved = false;
+    c.setPointerCapture(pointerId);
+    document.body.classList.add("moving-point");
     const move = (e) => {
+      if (e.pointerId !== pointerId) return;
+      if (!moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 3) return;
+      moved = true;
       const p = svgPoint(svg, e);
       c.setAttribute("cx", p.x); c.setAttribute("cy", p.y);
     };
+    const cleanup = () => {
+      c.removeEventListener("pointermove", move);
+      c.removeEventListener("pointerup", up);
+      c.removeEventListener("pointercancel", cancel);
+      if (c.hasPointerCapture(pointerId)) c.releasePointerCapture(pointerId);
+      document.body.classList.remove("moving-point");
+    };
     const up = (e) => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      if (e.pointerId !== pointerId) return;
+      cleanup();
+      if (!moved) {
+        state.selMarker = { key, mid };
+        renderMarkers(); renderDataEditor();
+        return;
+      }
+      c.wasDragged = true;
       const p = svgPoint(svg, e);
       const m = state.markers[key][mid];
-      m.xy = [Math.round((p.x + frame.minx - frame.pad) * 10) / 10,
-              Math.round((frame.maxy - (p.y - frame.pad)) * 10) / 10];
+      if (!m) return;
+      const mapPoint = unprojectPoint(frame, p);
+      m.xy = [Math.round(mapPoint.x * 10) / 10, Math.round(mapPoint.y * 10) / 10];
       const fl = Object.values(state.floors).find((f) => f.source === m.floor);
       m.room = roomAt(fl, m.xy[0], m.xy[1]);
       saveOverlay(key); renderMarkers(); renderDataEditor();
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    const cancel = (e) => {
+      if (e.pointerId !== pointerId) return;
+      cleanup();
+      if (moved) renderMarkers();
+    };
+    c.addEventListener("pointermove", move);
+    c.addEventListener("pointerup", up);
+    c.addEventListener("pointercancel", cancel);
   });
 }
 
@@ -427,6 +641,21 @@ $("#btn-create-group").onclick = () => {
 };
 
 /* ---------- sidebar: overlay data ---------- */
+function updateMovePointsControl() {
+  const displayedKeys = new Set([
+    ...state.activeSchemas,
+    ...Object.keys(state.mapShow).filter((key) => state.mapShow[key]),
+  ]);
+  const hasDisplayedPoints = [...displayedKeys]
+    .some((key) => Object.keys(state.markers[key] || {}).length > 0);
+  const control = $("#move-points-control");
+  const checkbox = $("#move-points");
+  control.hidden = !hasDisplayedPoints;
+  if (!hasDisplayedPoints) state.movePoints = false;
+  checkbox.checked = state.movePoints;
+  document.body.classList.toggle("move-points-enabled", state.movePoints);
+}
+
 function renderSchemaChecks() {
   const div = $("#schema-checks");
   div.innerHTML = Object.keys(state.schemas).length ? "" : "<p class='muted'>No overlay types yet — create one in Manage.</p>";
@@ -442,6 +671,7 @@ function renderSchemaChecks() {
         if (!state.overlays[key]) await loadOverlay(key);
       } else state.activeSchemas.delete(key);
       renderDataEditor();
+      renderMarkers();
     };
     lab.append(cb, " " + sc.name + " ");
     const exp = document.createElement("a");
@@ -462,12 +692,14 @@ function renderSchemaChecks() {
         state.mapShow[key] = fieldSel.value || (sc.fields[0] && sc.fields[0].key);
         fieldSel.style.display = "";
         if (!state.overlays[key]) await loadOverlay(key);
+        if (key === "temperature" && selectTemperatureColoring()) refreshRoomClasses();
       } else {
         delete state.mapShow[key];
         fieldSel.style.display = "none";
       }
       localStorage.setItem("mapShow", JSON.stringify(state.mapShow));
       refreshLabels();
+      renderMarkers();
     };
     mapCb.onchange = applyMapShow;
     fieldSel.onchange = applyMapShow;
@@ -488,6 +720,7 @@ function renderSchemaChecks() {
     lab.append(" ", ptBtn);
     div.appendChild(lab);
   }
+  updateMovePointsControl();
 }
 function dataMode() {
   return document.querySelector('#data-mode input[name=dmode]:checked').value;
@@ -656,8 +889,26 @@ function renderSchemaEditor() {
     del.textContent = "delete type";
     del.onclick = () => {
       if (confirm(`Delete overlay type "${sc.name}"? (data file kept on disk)`)) {
-        delete state.schemas[key]; state.activeSchemas.delete(key);
-        saveSchemas(); renderSchemaEditor(); renderSchemaChecks(); renderDataEditor();
+        delete state.schemas[key];
+        state.activeSchemas.delete(key);
+        delete state.mapShow[key];
+        delete state.overlays[key];
+        delete state.overlayMeta[key];
+        delete state.markers[key];
+        localStorage.setItem("mapShow", JSON.stringify(state.mapShow));
+        if (state.placing === key) {
+          state.placing = null;
+          document.body.classList.remove("placing");
+        }
+        if (state.selMarker?.key === key) state.selMarker = null;
+        saveSchemas();
+        renderColorOptions();
+        renderSchemaEditor();
+        renderSchemaChecks();
+        renderDataEditor();
+        refreshRoomClasses();
+        refreshLabels();
+        renderMarkers();
       }
     };
     block.append(name, del);
@@ -705,23 +956,66 @@ document.querySelectorAll(".tab").forEach((b) =>
     $("#tab-" + b.dataset.tab).classList.add("active");
   }));
 document.querySelectorAll("#floor-checks input").forEach((c) => c.addEventListener("change", renderMaps));
-$("#colorby").addEventListener("change", (e) => { state.colorby = e.target.value; refreshRoomClasses(); });
+function renderOrientationToggle() {
+  const btn = $("#orientation-toggle");
+  const northUp = state.orientation === "north-up";
+  btn.textContent = northUp ? "North \u2191" : "North \u2192";
+  btn.title = northUp
+    ? "North is at the top; click for the original view"
+    : "North is at the right; click for north at the top";
+  btn.setAttribute("aria-pressed", String(northUp));
+}
+$("#orientation-toggle").addEventListener("click", () => {
+  state.orientation = state.orientation === "north-up" ? "north-right" : "north-up";
+  localStorage.setItem("mapOrientation", state.orientation);
+  renderOrientationToggle();
+  renderMaps();
+});
+$("#colorby").addEventListener("change", async (e) => {
+  state.colorby = e.target.value;
+  if (state.colorby.startsWith("overlay:")) {
+    const [, key] = state.colorby.split(":");
+    if (!state.overlays[key]) await loadOverlay(key);
+  }
+  refreshRoomClasses(); refreshLabels(); renderColorLegend();
+});
 $("#search").addEventListener("input", refreshRoomClasses);
+
+async function refreshLiveTemperature() {
+  if (!state.schemas.temperature) return;
+  try {
+    await loadOverlay("temperature");
+    refreshRoomClasses();
+    refreshLabels();
+    renderColorLegend();
+  } catch (error) {
+    console.warn("temperature refresh failed", error);
+  }
+}
 
 document.querySelectorAll('#data-mode input[name=dmode]').forEach((r) =>
   r.addEventListener("change", renderDataEditor));
 $("#data-filter").addEventListener("input", debounce(renderDataEditor, 250));
+$("#move-points").addEventListener("change", (ev) => {
+  state.movePoints = ev.target.checked;
+  renderMarkers();
+});
 
 /* ---------- init ---------- */
 (async function init() {
+  renderOrientationToggle();
   state.floors = await api.get("floors");
   state.names = await api.get("data/names");
   state.groups = await api.get("data/groups");
   state.schemas = await api.get("data/schemas");
+  if (state.schemas.temperature) await loadOverlay("temperature");
+  renderColorOptions();
+  if (state.mapShow.temperature) selectTemperatureColoring();
   for (const key of Object.keys(state.mapShow)) {
     if (!state.schemas[key]) { delete state.mapShow[key]; continue; }
     await loadOverlay(key);
   }
   renderMaps(); renderSelection(); renderGroups(); renderGroupManage();
   renderSchemaChecks(); renderSchemaEditor(); renderDataEditor(); refreshLabels(); renderMarkers();
+  window.setInterval(refreshLiveTemperature, 30000);
 })();

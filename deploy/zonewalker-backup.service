@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up posting.foundation Zonewalker data
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/zonewalker/tools/backup_posting_foundation.sh
+NoNewPrivileges=true

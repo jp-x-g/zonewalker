@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "layer_id": "vav",
+  "name": "VAV zones",
+  "description": "Current single-VAV room classifications, completed in the zonewalker GUI from the HVAC handoff and manual room review.",
+  "floor_convention": "Zonewalker physical floors: F1 through F4 are physical Floors 1 through 4. No F2/F3 translation is applied.",
+  "source": {
+    "archive": "everything.zip",
+    "path": "energy_model/hvac_mapping.json",
+    "imported_on": "2026-07-13",
+    "basis": "Initial direct historical room-id import followed by manual completion and correction in the zonewalker GUI",
+    "manual_completion_on": "2026-07-13"
+  },
+  "vavs": [
+    "VAV-1-1",
+    "VAV-1-2",
+    "VAV-1-3",
+    "VAV-1-4",
+    "VAV-1-5",
+    "VAV-2-1",
+    "VAV-2-2",
+    "VAV-2-3",
+    "VAV-2-4",
+    "VAV-2-5",
+    "VAV-2-6",
+    "VAV-2-7",
+    "VAV-2-8",
+    "VAV-3-1",
+    "VAV-3-2",
+    "VAV-3-3",
+    "VAV-3-4",
+    "VAV-3-5",
+    "VAV-3-6",
+    "VAV-3-7",
+    "VAV-3-8",
+    "VAV-3-9",
+    "VAV-4-1",
+    "VAV-4-2",
+    "VAV-4-3",
+    "VAV-4-4",
+    "VAV-4-5",
+    "VAV-4-6",
+    "VAV-4-7",
+    "VAV-4-8",
+    "VAV-4-9"
+  ],
+  "rooms": {
+    "F1/R006": {
+      "vav": "VAV-1-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R007": {
+      "vav": "VAV-1-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R013": {
+      "vav": "VAV-1-4",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R014": {
+      "vav": "VAV-1-1",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R015": {
+      "vav": "VAV-1-4",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R017": {
+      "vav": "VAV-1-4",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R018": {
+      "vav": "VAV-1-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R019": {
+      "vav": "VAV-1-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R020": {
+      "vav": "VAV-1-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R021": {
+      "vav": "VAV-1-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F1/R022": {
+      "vav": "VAV-1-3",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R002": {
+      "vav": "VAV-2-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R004": {
+      "vav": "VAV-2-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R005": {
+      "vav": "VAV-2-4",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R006": {
+      "vav": "VAV-2-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R010": {
+      "vav": "VAV-2-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R018": {
+      "vav": "VAV-2-8",
+      "mapping_status": "imported-direct-id"
+    },
+    "F2/R020": {
+      "vav": "VAV-2-1",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R002": {
+      "vav": "VAV-3-4",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R006": {
+      "vav": "VAV-3-1",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R007": {
+      "vav": "VAV-3-7",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R008": {
+      "vav": "VAV-3-1",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R010": {
+      "vav": "VAV-3-1",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R011": {
+      "vav": "VAV-3-1",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R016": {
+      "vav": "VAV-3-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F3/R018": {
+      "vav": "VAV-3-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R002": {
+      "vav": "VAV-4-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R003": {
+      "vav": "VAV-4-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R005": {
+      "vav": "VAV-4-5",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R008": {
+      "vav": "VAV-4-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R012": {
+      "vav": "VAV-4-2",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R023": {
+      "vav": "VAV-4-3",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R025": {
+      "vav": "VAV-4-3",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R028": {
+      "vav": "VAV-4-3",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R031": {
+      "vav": "VAV-4-6",
+      "mapping_status": "imported-direct-id"
+    },
+    "F4/R040": {
+      "vav": "VAV-4-1",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R041": {
+      "vav": "VAV-4-1",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R042": {
+      "vav": "VAV-4-1",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R043": {
+      "vav": "VAV-4-1",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R044": {
+      "vav": "VAV-4-3",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R021": {
+      "vav": "VAV-4-4",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R047": {
+      "vav": "VAV-4-8",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R006": {
+      "vav": "VAV-4-8",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R050": {
+      "vav": "VAV-4-2",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R038": {
+      "vav": "VAV-4-2",
+      "mapping_status": "manually-verified"
+    },
+    "F4/R015": {
+      "vav": "VAV-4-2",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R028": {
+      "vav": "VAV-3-8",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R031": {
+      "vav": "VAV-3-9",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R022": {
+      "vav": "VAV-3-7",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R003": {
+      "vav": "VAV-3-7",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R029": {
+      "vav": "VAV-3-8",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R027": {
+      "vav": "VAV-3-2",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R025": {
+      "vav": "VAV-3-5",
+      "mapping_status": "manually-verified"
+    },
+    "F3/R026": {
+      "vav": "VAV-3-6",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R037": {
+      "vav": "VAV-2-2",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R035": {
+      "vav": "VAV-2-2",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R034": {
+      "vav": "VAV-2-5",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R026": {
+      "vav": "VAV-2-5",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R025": {
+      "vav": "VAV-2-4",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R023": {
+      "vav": "VAV-2-4",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R033": {
+      "vav": "VAV-2-1",
+      "mapping_status": "manually-verified"
+    },
+    "F2/R032": {
+      "vav": "VAV-2-6",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R041": {
+      "vav": "VAV-1-2",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R037": {
+      "vav": "VAV-1-3",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R040": {
+      "vav": "VAV-1-4",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R035": {
+      "vav": "VAV-1-5",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R045": {
+      "vav": "VAV-1-5",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R034": {
+      "vav": "VAV-1-1",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R016": {
+      "vav": "VAV-1-3",
+      "mapping_status": "manually-verified"
+    },
+    "F1/R033": {
+      "vav": "VAV-1-3",
+      "mapping_status": "manually-verified"
+    }
+  },
+  "excluded_multi_vav_rooms": [
+    {
+      "historical_room": "F1/R010",
+      "vavs": [
+        "VAV-1-1",
+        "VAV-1-3",
+        "VAV-1-5"
+      ]
+    },
+    {
+      "historical_room": "F2/R017",
+      "vavs": [
+        "VAV-2-1",
+        "VAV-2-3",
+        "VAV-2-4",
+        "VAV-2-6",
+        "VAV-2-7"
+      ]
+    },
+    {
+      "historical_room": "F3/R014",
+      "vavs": [
+        "VAV-3-3",
+        "VAV-3-8"
+      ]
+    },
+    {
+      "historical_room": "F3/R015",
+      "vavs": [
+        "VAV-3-2",
+        "VAV-3-5",
+        "VAV-3-6",
+        "VAV-3-7"
+      ]
+    },
+    {
+      "historical_room": "F4/R017",
+      "vavs": [
+        "VAV-4-4",
+        "VAV-4-6",
+        "VAV-4-7",
+        "VAV-4-8"
+      ]
+    },
+    {
+      "historical_room": "F4/R021",
+      "vavs": [
+        "VAV-4-4",
+        "VAV-4-9"
+      ]
+    }
+  ],
+  "averaged_temperature_rooms": [
+    {
+      "room": "F1/R010",
+      "vavs": ["VAV-1-1", "VAV-1-3", "VAV-1-5"]
+    },
+    {
+      "room": "F2/R017",
+      "vavs": ["VAV-2-1", "VAV-2-3", "VAV-2-4", "VAV-2-6", "VAV-2-7"]
+    },
+    {
+      "room": "F3/R015",
+      "vavs": ["VAV-3-2", "VAV-3-5", "VAV-3-6", "VAV-3-7"]
+    },
+    {
+      "room": "F4/R017",
+      "vavs": ["VAV-4-4", "VAV-4-6", "VAV-4-7", "VAV-4-8"]
+    }
+  ],
+  "historical_direct_id_misses": [
+    {
+      "historical_room": "F1/R004",
+      "vav": "VAV-1-3"
+    },
+    {
+      "historical_room": "F1/R008",
+      "vav": "VAV-1-2"
+    },
+    {
+      "historical_room": "F1/R011",
+      "vav": "VAV-1-4"
+    },
+    {
+      "historical_room": "F1/R012",
+      "vav": "VAV-1-5"
+    },
+    {
+      "historical_room": "F1/R024",
+      "vav": "VAV-1-1"
+    },
+    {
+      "historical_room": "F1/R025",
+      "vav": "VAV-1-5"
+    },
+    {
+      "historical_room": "F2/R008",
+      "vav": "VAV-2-5"
+    },
+    {
+      "historical_room": "F2/R009",
+      "vav": "VAV-2-4"
+    },
+    {
+      "historical_room": "F2/R011",
+      "vav": "VAV-2-2"
+    },
+    {
+      "historical_room": "F2/R013",
+      "vav": "VAV-2-2"
+    },
+    {
+      "historical_room": "F2/R014",
+      "vav": "VAV-2-6"
+    },
+    {
+      "historical_room": "F2/R021",
+      "vav": "VAV-2-6"
+    },
+    {
+      "historical_room": "F3/R004",
+      "vav": "VAV-3-9"
+    },
+    {
+      "historical_room": "F3/R013",
+      "vav": "VAV-3-6"
+    },
+    {
+      "historical_room": "F3/R019",
+      "vav": "VAV-3-2"
+    },
+    {
+      "historical_room": "F4/R004",
+      "vav": "VAV-4-8"
+    },
+    {
+      "historical_room": "F4/R009",
+      "vav": "VAV-4-8"
+    },
+    {
+      "historical_room": "F4/R010",
+      "vav": "VAV-4-2"
+    },
+    {
+      "historical_room": "F4/R013",
+      "vav": "VAV-4-2"
+    },
+    {
+      "historical_room": "F4/R022",
+      "vav": "VAV-4-1"
+    },
+    {
+      "historical_room": "F4/R024",
+      "vav": "VAV-4-1"
+    },
+    {
+      "historical_room": "F4/R026",
+      "vav": "VAV-4-1"
+    },
+    {
+      "historical_room": "F4/R027",
+      "vav": "VAV-4-9"
+    },
+    {
+      "historical_room": "F4/R032",
+      "vav": "VAV-4-1"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ Then open http://localhost:8177  (LAN: http://<this-machine-ip>:8177)
 Layout (all relative to this file):
   static/     frontend
   partition/  F#.geojson floor geometry
+  layers/     version-controlled built-in room classifications
   data/       overlay JSON files (created on use; backups/ inside)
 """
 import base64
@@ -22,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 PARTITION = ROOT / "partition"
+LAYERS = ROOT / "layers"
 DATA = ROOT / "data"
 DATA.mkdir(exist_ok=True)
 
@@ -54,6 +56,67 @@ def load_json(path, default):
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return default
+
+
+def builtin_data(key):
+    """Return version-controlled defaults in the editable overlay format."""
+    layer = load_json(LAYERS / "vav.json", {})
+    if key == "overlay_vav":
+        return layer.get("rooms", {})
+    if key != "schemas":
+        return {}
+    return {
+        "vav": {
+            "name": "VAV zones",
+            "fields": [
+                {
+                    "key": "vav",
+                    "label": "VAV",
+                    "type": "select",
+                    "options": layer.get("vavs", []),
+                    "color_label": "VAV zones",
+                },
+                {
+                    "key": "mapping_status",
+                    "label": "mapping status",
+                    "type": "select",
+                    "options": ["imported-direct-id", "manually-verified"],
+                    "colorable": False,
+                },
+            ],
+        },
+        "temperature": {
+            "name": "Latest temperatures",
+            "fields": [
+                {
+                    "key": "temperature_f",
+                    "label": "Temperature",
+                    "type": "number",
+                    "unit": "°F",
+                    "color_label": "Latest temperatures",
+                    "color_scale": {"kind": "temperature", "min": 65, "max": 80},
+                },
+                {"key": "vav", "label": "VAV", "type": "text"},
+                {"key": "read_at", "label": "Read at", "type": "text"},
+                {
+                    "key": "quality",
+                    "label": "Quality",
+                    "type": "select",
+                    "options": ["good", "stale", "error"],
+                    "colorable": False,
+                },
+            ],
+        },
+    }
+
+
+def load_data(key):
+    """Merge editable data over version-controlled built-in defaults."""
+    base = builtin_data(key)
+    saved = load_json(data_path(key), {})
+    if isinstance(base, dict) and isinstance(saved, dict):
+        return {**base, **saved}
+    return saved if saved else base
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -106,12 +169,13 @@ class Handler(BaseHTTPRequestHandler):
                     out[str(story)] = {"source": src, "geojson": gj}
                 return self._send(200, out)
             if p.startswith("/api/data/"):
-                return self._send(200, load_json(data_path(p.rsplit("/", 1)[1]), {}))
+                return self._send(200, load_data(p.rsplit("/", 1)[1]))
             if p.startswith("/api/export/") and p.endswith(".csv"):
                 key = p[len("/api/export/"):-4]
-                data = load_json(data_path(key), {})
-                names = load_json(data_path("names"), {})
+                data = load_data(key)
+                names = load_data("names")
                 markers = data.pop("_markers", {})
+                data.pop("_meta", None)
                 fields = sorted(
                     {f for v in data.values() if isinstance(v, dict) for f in v} |
                     {f for m in markers.values() for f in m.get("fields", {})})

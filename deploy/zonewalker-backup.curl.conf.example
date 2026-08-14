@@ -1,0 +1,11 @@
+# Install as ~/.config/zonewalker-backup/curl.conf with mode 0600.
+url = "https://posting.foundation/api/backup.zip"
+user = "anything:REPLACE_WITH_PASSWORD"
+fail
+silent
+show-error
+location
+retry = 4
+retry-all-errors
+connect-timeout = 20
+max-time = 180

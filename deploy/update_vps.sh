@@ -8,6 +8,7 @@ echo "== copying files =="
 cp server.py "$APP/"
 cp -r static "$APP/" 2>/dev/null || true
 cp partition/F*.geojson "$APP/partition/"
+mkdir -p "$APP/layers" && cp layers/*.json "$APP/layers/"
 mkdir -p "$APP/tools" && cp tools/*.py "$APP/tools/"
 echo "== data migration (no-op if already done) =="
 python3 "$APP/tools/migrate_f2f3_swap.py" "$APP/data" || true

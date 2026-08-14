@@ -8,6 +8,7 @@
 <body>
 <div id="topbar">
   <strong>1680 Mission</strong>
+  <span id="orientation-control">View: <button id="orientation-toggle" type="button"></button></span>
   <span id="floor-checks">
     Floors:
     <label><input type="checkbox" data-story="1" checked> 1</label>
@@ -18,6 +19,7 @@
   <label>Color by:
     <select id="colorby"><option value="none">floor</option><option value="group">group</option></select>
   </label>
+  <span id="color-legend"></span>
   <input id="search" type="search" placeholder="search rooms/groups…">
   <span id="status"></span>
 </div>
@@ -45,6 +47,9 @@
     <div id="tab-data" class="tabpane">
       <h3>Overlay data</h3>
       <div id="schema-checks"></div>
+      <label id="move-points-control" hidden>
+        <input id="move-points" type="checkbox"> Move points
+      </label>
       <div id="data-mode">
         <label><input type="radio" name="dmode" value="sel" checked> selection</label>
         <label><input type="radio" name="dmode" value="all"> all rooms</label>
