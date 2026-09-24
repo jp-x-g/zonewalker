@@ -86,3 +86,27 @@ systemctl --user start zonewalker-backup.service
 ```
 
 Deployed on VPS 2026-07-08.
+
+## Haku temperature ingestion
+
+`telemetry.py` implements the signed `mox.hvac.telemetry.v1` ingestion used by
+`POST /api/hvac/ingest`. Configure the shared signing secret privately through
+`ZONEWALKER_INGEST_SECRET` or `ingest-secret.txt`; the default key ID is
+`haku-prod` and can be changed through `ZONEWALKER_INGEST_KEY_ID`. Without a
+secret the ingestion endpoint is disabled. Never commit the secret file.
+
+The server validates HMAC signatures and timestamps, rejects repeated nonces,
+and projects readings through `layers/vav.json` into the temperature overlay.
+`GET /api/hvac/status` uses the site's normal authentication. Runtime readings,
+overlays, and room edits remain in the ignored `data/` directory and require
+separate backups. Deploy `telemetry.py` together with `server.py`.
+
+Run the isolated regression tests with:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+The September 24, 2026 source-preservation update does not redeploy or restart
+the live site. The Windows collection and historian tools are preserved in
+the private `trikkery/vav-dashboard` repository under `haku-telemetry/`.

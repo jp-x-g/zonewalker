@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 APP=/opt/room-map-gui
 echo "== copying files =="
-cp server.py "$APP/"
+cp server.py telemetry.py "$APP/"
 cp -r static "$APP/" 2>/dev/null || true
 cp partition/F*.geojson "$APP/partition/"
 mkdir -p "$APP/layers" && cp layers/*.json "$APP/layers/"

@@ -20,6 +20,13 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from telemetry import (
+    MAX_BODY_BYTES,
+    TelemetryAuthenticationError,
+    TelemetryIngestor,
+    TelemetryValidationError,
+)
+
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 PARTITION = ROOT / "partition"
@@ -35,11 +42,22 @@ STORY_SOURCES = {1: "F1", 2: "F2", 3: "F3", 4: "F4"}
 PORT = int(os.environ.get("MAPGUI_PORT", "8177"))
 BIND = os.environ.get("MAPGUI_BIND", "0.0.0.0")  # behind a proxy use 127.0.0.1
 MAX_PUT_BYTES = 20_000_000
+INGEST_KEY_ID = os.environ.get("ZONEWALKER_INGEST_KEY_ID", "haku-prod")
 
 # Shared password: put it (one line) in password.txt next to this file.
 # If the file is absent or empty, the server runs open (LAN-only mode).
 _pw_file = ROOT / "password.txt"
 PASSWORD = _pw_file.read_text(encoding="utf-8").strip() if _pw_file.exists() else ""
+_ingest_secret_file = ROOT / "ingest-secret.txt"
+INGEST_SECRET = os.environ.get("ZONEWALKER_INGEST_SECRET", "")
+if not INGEST_SECRET and _ingest_secret_file.exists():
+    INGEST_SECRET = _ingest_secret_file.read_text(encoding="utf-8").strip()
+INGESTOR = TelemetryIngestor(
+    secret=INGEST_SECRET,
+    key_id=INGEST_KEY_ID,
+    layer_path=LAYERS / "vav.json",
+    data_dir=DATA,
+)
 _lock = threading.Lock()
 
 MIME = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -170,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, out)
             if p.startswith("/api/data/"):
                 return self._send(200, load_data(p.rsplit("/", 1)[1]))
+            if p == "/api/hvac/status":
+                return self._send(200, INGESTOR.status())
             if p.startswith("/api/export/") and p.endswith(".csv"):
                 key = p[len("/api/export/"):-4]
                 data = load_data(key)
@@ -208,10 +228,39 @@ class Handler(BaseHTTPRequestHandler):
             rel = "index.html" if p == "/" else p.lstrip("/")
             f = (STATIC / rel).resolve()
             if STATIC.resolve() in f.parents and f.is_file():
-                return self._send(200, f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"))
+                return self._send(
+                    200,
+                    f.read_bytes(),
+                    MIME.get(f.suffix, "application/octet-stream"),
+                    {"Cache-Control": "no-cache"},
+                )
             return self._send(404, {"error": "not found"})
         except Exception as e:
             return self._send(500, {"error": str(e)})
+
+    def do_POST(self):
+        p = self.path.split("?")[0]
+        if p != "/api/hvac/ingest":
+            if not self._authorized():
+                return self._deny()
+            return self._send(404, {"error": "not found"})
+        if not INGEST_SECRET:
+            return self._send(503, {"ok": False, "error": "telemetry ingest is not configured"})
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._send(400, {"ok": False, "error": "invalid content length"})
+        if content_length <= 0 or content_length > MAX_BODY_BYTES:
+            return self._send(413, {"ok": False, "error": "invalid body size"})
+        body = self.rfile.read(content_length)
+        try:
+            result, duplicate = INGESTOR.ingest(self.headers, body)
+        except TelemetryAuthenticationError as exc:
+            return self._send(401, {"ok": False, "error": str(exc)})
+        except TelemetryValidationError as exc:
+            return self._send(400, {"ok": False, "error": str(exc)})
+        result["duplicate"] = duplicate
+        return self._send(200, result)
 
     def do_PUT(self):
         if not self._authorized():
@@ -245,5 +294,6 @@ if __name__ == "__main__":
         ip = "?"
     print(f"Room map GUI:  http://localhost:{PORT}   (LAN: http://{ip}:{PORT})")
     print("Password protection:", "ON" if PASSWORD else "OFF (create password.txt to enable)")
+    print("Telemetry ingest:", "ON" if INGEST_SECRET else "OFF (create ingest-secret.txt to enable)")
     print("Ctrl+C to stop.")
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()

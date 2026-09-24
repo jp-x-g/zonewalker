@@ -1,5 +1,6 @@
 # never commit these
 password.txt
+ingest-secret.txt
 data/
 py/
 __pycache__/
